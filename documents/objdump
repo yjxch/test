@@ -1,0 +1,105 @@
+1. 出现问题时的kernel crash log
+
+ 2171.557925:   <2> wmitlv_check_and_pad_tlvs: WARN: TLV array of structures needs padding. tlv_size_diff=256
+  2172.871765:   <6> Unable to handle kernel NULL pointer dereference at virtual address 00000028
+  2172.878989:   <6> pgd = ffffffc0019b4000
+  2172.882458:   <2> [00000028] *pgd=0000000152806003, *pud=0000000152806003, *pmd=0000000152807003, *pte=0060000009bc0707
+  2172.892493:   <6> Internal error: Oops: 96000005 [#1] PREEMPT SMP
+  2172.898019:   <2> Modules linked in: wlan(O)
+  2172.901751:   <6> CPU: 1 PID: 6454 Comm: kworker/u8:6 Tainted: G        W  O   3.18.20-g4ac0266-00067-g7afa6b7-dirty #2
+  2172.911994:   <6> Hardware name: Qualcomm Technologies, Inc. APQ 8096 v3 + PMI8996 CDP (DT)
+  2172.919817:   <2> Workqueue: kgsl-workqueue adreno_dispatcher_work
+  2172.925448:   <6> task: ffffffc0b27fc100 ti: ffffffc0134e4000 task.ti: ffffffc0134e4000
+  2172.932920:   <2> PC is at a5xx_preemption_schedule+0x36c/0x968                        -----------------------------------//函数总共0x968行，发生错误在0x36c行
+  2172.938302:   <2> LR is at a5xx_preemption_schedule+0x364/0x968
+  2172.943680:   <2> pc : [<ffffffc000531de0>] lr : [<ffffffc000531dd8>] pstate: 60000145
+  2172.951057:   <2> sp : ffffffc0134e7be0
+  2172.954360:   <2> x29: ffffffc0134e7be0 x28: 0000000000000002
+  2172.959645:   <2> x27: ffffffc001505238 x26: 0000000000000000
+  2172.964939:   <2> x25: 0000000000000000 x24: fffffffffffff308
+  2172.970236:   <2> x23: 00000000000006e8 x22: ffffffc001502e98
+  2172.975532:   <2> x21: ffffffc0015048a8 x20: ffffffc0018fe768
+  2172.980825:   <2> x19: ffffffc0015028a8 x18: 0000007f97d3d000
+  2172.986121:   <2> x17: 0000007f9b9cc3e4 x16: ffffffc0001b2410
+  2172.991415:   <2> x15: 000000000000000a x14: 3c3a435253203e31
+  2172.996711:   <2> x13: 30323378303a3030 x12: 3178303c3a435653
+  2173.002005:   <2> x11: 203078303a464320 x10: ffffffc00052fb14
+  2173.007302:   <2> x9 : 78303a6e654c2058 x8 : 00000000000000bc
+  2173.012596:   <2> x7 : 0000000040083101 x6 : 0000000000000b60
+  2173.017890:   <2> x5 : 0000000000000801 x4 : 000000000003f000
+  2173.023186:   <2> x3 : 00000000f8016000 x2 : 00ffffffffffffff
+  2173.028487:   <2> x1 : 00000000f8016000 x0 : 0000000000000000
+
+  
+2. 反编译 ./prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-objdump -SdCg ~/adreno_a5xx.o > ~/adreno_a5xx.dump2
+-S, --source             Intermix source code with disassembly
+-d, --disassemble        Display assembler contents of executable sections
+-g, --debugging          Display debug information in object file
+-D, --disassemble-all    Display assembler contents of all sections
+
+static void a5xx_preemption_schedule(
+  4419                 struct adreno_device *adreno_dev)
+  4420 {
+  4421     20c4:   a9ba7bfd    stp x29, x30, [sp,#-96]!
+  4422     20c8:   910003fd    mov x29, sp
+  4423     20cc:   a90153f3    stp x19, x20, [sp,#16]
+  4424     20d0:   a9025bf5    stp x21, x22, [sp,#32]
+  4425     20d4:   a90363f7    stp x23, x24, [sp,#48]
+  4426     20d8:   f90023f9    str x25, [sp,#64]
+
+
+a5xx_preemption_schedule
+20C4
+
+0x20C4+0x36C = 0x2430
+
+
+ wait_for_preemption_complete = 0;
+  4922     2420:   f9010e9f    str xzr, [x20,#536]
+  4923     adreno_readreg64(adreno_dev, ADRENO_REG_CP_RB_BASE,
+  4924     2424:   94000000    bl  0 <adreno_readreg64>
+  4925                 ADRENO_REG_CP_RB_BASE_HI, &rbbase);
+  4926     if (rbbase != adreno_dev->next_rb->buffer_desc.gpuaddr) {
+  4927     2428:   f9545660    ldr x0, [x19,#10408]
+  4928     242c:   f9402fa3    ldr x3, [x29,#88]
+  4929     2430:   f9401404    ldr x4, [x0,#40]                       -----------------------------------//出错函数位置，再去找相关代码，找到空指针
+  4930     2434:   eb04007f    cmp x3, x4
+  4931     2438:   54000180    b.eq    2468 <a5xx_preemption_schedule+0x3a4>
+
+
+
+
+补充：
+
+
+arm64 一个函数的输入参数都是放在x0 x1寄存器 ，  前8个参数 可以通过x0 ~x7 保存， 所以可以通过objdump解析出来的汇编语言，查看x0 x1（对应输入参数，看是不是为空）等等
+
+
+Argument registers (X0-X7)
+These are used to pass parameters to a function and to return a result. They can be used as scratch registers or as caller-saved register variables that can hold intermediate values within a function, between calls to other functions. The fact that 8 registers are available for passing parameters reduces the need to spill parameters to the stack when compared with AArch32.
+
+Caller-saved temporary registers (X9-X15)
+If the caller requires the values in any of these registers to be preserved across a call to another function, the caller must save the affected registers in its own stack frame. They can be modified by the called subroutine without the need to save and restore them before returning to the caller.
+
+Callee-saved registers (X19-X29)
+These registers are saved in the callee frame. They can be modified by the called subroutine as long as they are saved and restored before returning.
+
+Registers with a special purpose (X8, X16-X18, X29, X30)
+X8 is the indirect result register. This is used to pass the address location of an indirect result, for example, where a function returns a large structure.
+
+X16 and X17 are IP0 and IP1, intra-procedure-call temporary registers. These can be used by call veneers and similar code, or as temporary registers for intermediate values between subroutine calls. They are corruptible by a function. Veneers are small pieces of code which are automatically inserted by the linker, for example when the branch target is out of range of the branch instruction.
+
+X18 is the platform register and is reserved for the use of platform ABIs. This is an additional temporary register on platforms that don't assign a special meaning to it.
+
+X29 is the frame pointer register (FP).
+
+X30 is the link register (LR).
+
+
+
+
+
+./prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-objdump -xl -D -S ~/1117_vmlinux/last/vmlinux > ~/1117_vmlinux/last/vmlinux.dump
+
+
+./backup/qc8996-androidn_1104/ap/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-objdump -l -D
